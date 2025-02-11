@@ -3,7 +3,7 @@ package gitlabvulnreceiver
 import (
 	"context"
 
-	"gitlab.com/clario-clinical/personal-projects/abhishek-madan/opentelemetry/gitlabvulnreceiver/internal/state"
+	"github.com/iamabhimadan/gitlabvulnreceiver/internal/state"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"

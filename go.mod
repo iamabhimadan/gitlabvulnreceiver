@@ -1,4 +1,4 @@
-module gitlab.com/clario-clinical/personal-projects/abhishek-madan/opentelemetry/gitlabvulnreceiver
+module github.com/iamabhimadan/gitlabvulnreceiver
 
 go 1.23.3
 
