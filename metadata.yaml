@@ -1,0 +1,172 @@
+type: gitlab_vulnerability
+spec:
+  version: "0.1.0"
+  status:
+    class: receiver
+    stability:
+      logs: beta
+    distributions: [contrib]
+    codeowners:
+      active: [abhishek-madan]
+
+config:
+  # Required configurations
+  token:
+    description: GitLab API token with read_api scope
+    type: string
+    required: true
+
+  paths:
+    description: List of GitLab paths to monitor
+    type: list
+    element:
+      type: struct
+      fields:
+        path:
+          description: Full path to GitLab project or group
+          type: string
+          required: true
+        type:
+          description: Type of path - either "project" or "group"
+          type: string
+          required: true
+          valid_values: [project, group]
+
+  # Optional configurations
+  base_url:
+    description: Base URL of GitLab instance
+    type: string
+    default: https://gitlab.com
+
+  poll_interval:
+    description: How often to check for new vulnerabilities
+    type: duration
+    default: 5m
+
+  export_timeout:
+    description: Maximum time to wait for export completion
+    type: duration
+    default: 30m
+
+  state_file:
+    description: Path to file for storing state
+    type: string
+    default: ""
+
+resource_attributes:
+  gitlab.project.id:
+    description: The GitLab project ID
+    type: string
+    enabled: true
+  gitlab.group.id:
+    description: The GitLab group ID
+    type: string
+    enabled: true
+  gitlab.export.id:
+    description: The vulnerability export ID
+    type: string
+    enabled: true
+
+attributes:
+  vulnerability.id:
+    description: The vulnerability ID
+    type: string
+  vulnerability.title:
+    description: The vulnerability title
+    type: string
+  vulnerability.description:
+    description: Detailed description of the vulnerability
+    type: string
+  vulnerability.state:
+    description: Current state (detected, confirmed, dismissed, resolved)
+    type: string
+  vulnerability.severity:
+    description: Severity level (critical, high, medium, low, info)
+    type: string
+  vulnerability.confidence:
+    description: Confidence level of the finding
+    type: string
+  vulnerability.report_type:
+    description: Type of security report
+    type: string
+  vulnerability.project_name:
+    description: Name of the project
+    type: string
+  vulnerability.project_id:
+    description: GitLab project ID
+    type: string
+  vulnerability.scanner:
+    description: Security scanner that detected the vulnerability
+    type: string
+  vulnerability.scanner_id:
+    description: ID of the scanner
+    type: string
+  vulnerability.finding_id:
+    description: ID of the finding
+    type: string
+  vulnerability.identifiers:
+    description: List of vulnerability identifiers (CVE, CWE, etc)
+    type: string
+  vulnerability.project_default_branch:
+    description: Default branch of the project
+    type: string
+  vulnerability.solution:
+    description: Suggested solution for the vulnerability
+    type: string
+  vulnerability.file:
+    description: Affected file path
+    type: string
+  vulnerability.line:
+    description: Line number where vulnerability was found
+    type: string
+  vulnerability.location_link:
+    description: Link to vulnerability location
+    type: string
+  vulnerability.location_fingerprint:
+    description: Fingerprint of vulnerability location
+    type: string
+  vulnerability.tracking_status:
+    description: Status of vulnerability tracking
+    type: string
+  vulnerability.links:
+    description: Related links
+    type: string
+  vulnerability.remediations:
+    description: Suggested remediations
+    type: string
+  vulnerability.evidence:
+    description: Supporting evidence
+    type: string
+  vulnerability.assets:
+    description: Affected assets
+    type: string
+  vulnerability.discovered_at:
+    description: When the vulnerability was discovered
+    type: string
+  vulnerability.confirmed_at:
+    description: When the vulnerability was confirmed
+    type: string
+  vulnerability.resolved_at:
+    description: When the vulnerability was resolved
+    type: string
+  vulnerability.dismissed_at:
+    description: When the vulnerability was dismissed
+    type: string
+  vulnerability.dismissal_reason:
+    description: Reason for dismissal
+    type: string
+  vulnerability.dismissal_comment:
+    description: Comment explaining dismissal
+    type: string
+
+logs:
+  vulnerability:
+    description: A vulnerability finding from GitLab
+    enabled: true
+    attributes: [vulnerability.id, vulnerability.title, vulnerability.description, vulnerability.state, vulnerability.severity, vulnerability.confidence, vulnerability.report_type, vulnerability.project_name, vulnerability.project_id, vulnerability.scanner, vulnerability.scanner_id, vulnerability.finding_id, vulnerability.identifiers, vulnerability.project_default_branch, vulnerability.solution, vulnerability.file, vulnerability.line, vulnerability.location_link, vulnerability.location_fingerprint, vulnerability.tracking_status, vulnerability.links, vulnerability.remediations, vulnerability.evidence, vulnerability.assets, vulnerability.discovered_at, vulnerability.confirmed_at, vulnerability.resolved_at, vulnerability.dismissed_at, vulnerability.dismissal_reason, vulnerability.dismissal_comment]
+
+status: beta
+stability: beta
+pipelines:
+  logs:
+    receivers: [gitlab_vulnerability] 
