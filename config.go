@@ -15,11 +15,17 @@ const (
 	defaultExportTimeout = 15 * time.Minute // Increased from 5m to 15m
 )
 
+type PathConfig struct {
+	Path string `mapstructure:"path"`
+	Type string `mapstructure:"type"`
+}
+
 type Config struct {
 	confighttp.ClientConfig `mapstructure:",squash"`
 
 	// Required configurations
 	Token configopaque.String `mapstructure:"token"`
+	Paths []PathConfig        `mapstructure:"paths"`
 
 	// GitLab URL - either project or group URL
 	URL string `mapstructure:"url"`
@@ -37,6 +43,16 @@ type Config struct {
 func (c *Config) Validate() error {
 	if c.Token == "" {
 		return fmt.Errorf("token cannot be empty")
+	}
+
+	if len(c.Paths) == 0 {
+		return fmt.Errorf("at least one path must be configured")
+	}
+
+	for _, p := range c.Paths {
+		if p.Type != "project" && p.Type != "group" {
+			return fmt.Errorf("type must be either 'project' or 'group', got: %s", p.Type)
+		}
 	}
 
 	if c.URL == "" {
@@ -95,6 +111,11 @@ func (c *Config) validateGitLabURL() error {
 
 // GetPath returns the GitLab path from the URL
 func (c *Config) GetPath() string {
-	u, _ := url.Parse(c.URL)
-	return strings.Trim(u.Path, "/")
+	// Remove the base URL if present
+	path := strings.TrimPrefix(c.URL, c.BaseURL)
+	// Remove any trailing slashes
+	path = strings.TrimSuffix(path, "/")
+	// Remove any leading slashes
+	path = strings.TrimPrefix(path, "/")
+	return path
 }

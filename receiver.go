@@ -77,20 +77,24 @@ func (r *vulnerabilityReceiver) pollForExports(ctx context.Context) {
 
 // Checks for new exports and processes them
 func (r *vulnerabilityReceiver) checkExports(ctx context.Context) error {
-	path := r.cfg.GetPath()
-
-	switch r.cfg.Type {
-	case "project":
-		if err := r.processProjectExports(ctx, path); err != nil {
-			r.logger.Error("Failed to process project exports",
-				zap.String("project", path),
-				zap.Error(err))
+	for _, path := range r.cfg.Paths {
+		var err error
+		switch path.Type {
+		case "project":
+			err = r.processProjectExports(ctx, path.Path)
+		case "group":
+			err = r.processGroupExports(ctx, path.Path)
+		default:
+			r.logger.Error("Invalid path type", zap.String("type", path.Type))
+			continue
 		}
-	case "group":
-		if err := r.processGroupExports(ctx, path); err != nil {
-			r.logger.Error("Failed to process group exports",
-				zap.String("group", path),
+		if err != nil {
+			r.logger.Error("Failed to process exports",
+				zap.String("path", path.Path),
+				zap.String("type", path.Type),
 				zap.Error(err))
+			// Continue with other paths even if one fails
+			continue
 		}
 	}
 	return nil
