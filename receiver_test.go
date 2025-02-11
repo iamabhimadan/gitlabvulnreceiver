@@ -145,8 +145,13 @@ func TestProcessGroupExports(t *testing.T) {
 
 	cfg := &Config{
 		ExportTimeout: 30 * time.Second,
-		Type:          "group",
-		StateFile:     stateFile, // Add state file path
+		Paths: []PathConfig{
+			{
+				Path: "test-group",
+				Type: "group",
+			},
+		},
+		StateFile: stateFile,
 	}
 
 	// Initialize state manager properly
@@ -245,5 +250,3 @@ func TestProcessExportErrors(t *testing.T) {
 		})
 	}
 }
-
-// Add more tests for Start, Shutdown, checkExports, etc.

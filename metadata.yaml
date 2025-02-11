@@ -10,12 +10,6 @@ spec:
       active: [abhishek-madan]
 
 config:
-  # Required configurations
-  token:
-    description: GitLab API token with read_api scope
-    type: string
-    required: true
-
   paths:
     description: List of GitLab paths to monitor
     type: list
@@ -32,7 +26,11 @@ config:
           required: true
           valid_values: [project, group]
 
-  # Optional configurations
+  token:
+    description: GitLab API token with read_api scope
+    type: string
+    required: true
+
   base_url:
     description: Base URL of GitLab instance
     type: string

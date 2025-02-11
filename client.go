@@ -1,6 +1,7 @@
 package gitlabvulnreceiver
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -334,8 +335,17 @@ func (c *GitLabClient) buildURL(endpoint string) string {
 }
 
 func (c *GitLabClient) resolveProjectID(ctx context.Context, projectPath string) (int, error) {
-	// Double URL encode the path as required by GitLab API
-	encodedPath := url.PathEscape(url.PathEscape(projectPath))
+	// Clean up the path first
+	projectPath = strings.TrimPrefix(projectPath, "/")
+	projectPath = strings.TrimSuffix(projectPath, "/")
+
+	// For project API, we need to encode each path segment separately
+	segments := strings.Split(projectPath, "/")
+	for i, segment := range segments {
+		segments[i] = url.PathEscape(segment)
+	}
+	encodedPath := strings.Join(segments, "%2F")
+
 	endpoint := c.buildURL(fmt.Sprintf("%s/projects/%s", apiV4Path, encodedPath))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -355,25 +365,35 @@ func (c *GitLabClient) resolveProjectID(ctx context.Context, projectPath string)
 	}
 	defer resp.Body.Close()
 
+	body, _ := io.ReadAll(resp.Body)
+
 	if resp.StatusCode == http.StatusNotFound {
-		return 0, fmt.Errorf("project not found: %s", projectPath)
+		return 0, fmt.Errorf("project not found: %s (response: %s)", projectPath, string(body))
 	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
 		return 0, fmt.Errorf("failed to get project, status: %d, body: %s", resp.StatusCode, string(body))
 	}
 
 	var project GitLabProject
-	if err := json.NewDecoder(resp.Body).Decode(&project); err != nil {
-		return 0, fmt.Errorf("failed to decode project response: %w", err)
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&project); err != nil {
+		return 0, fmt.Errorf("failed to decode project response: %w, body: %s", err, string(body))
 	}
 
 	return project.ID, nil
 }
 
 func (c *GitLabClient) resolveGroupID(ctx context.Context, groupPath string) (int, error) {
-	// Double URL encode the path as required by GitLab API
-	encodedPath := url.PathEscape(url.PathEscape(groupPath))
+	// Clean up the path first
+	groupPath = strings.TrimPrefix(groupPath, "/")
+	groupPath = strings.TrimSuffix(groupPath, "/")
+
+	// For group API, we need to encode each path segment separately
+	segments := strings.Split(groupPath, "/")
+	for i, segment := range segments {
+		segments[i] = url.PathEscape(segment)
+	}
+	encodedPath := strings.Join(segments, "%2F")
+
 	endpoint := c.buildURL(fmt.Sprintf("%s/groups/%s", apiV4Path, encodedPath))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -393,17 +413,18 @@ func (c *GitLabClient) resolveGroupID(ctx context.Context, groupPath string) (in
 	}
 	defer resp.Body.Close()
 
+	body, _ := io.ReadAll(resp.Body)
+
 	if resp.StatusCode == http.StatusNotFound {
-		return 0, fmt.Errorf("group not found: %s", groupPath)
+		return 0, fmt.Errorf("group not found: %s (response: %s)", groupPath, string(body))
 	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
 		return 0, fmt.Errorf("failed to get group, status: %d, body: %s", resp.StatusCode, string(body))
 	}
 
 	var group GitLabGroup
-	if err := json.NewDecoder(resp.Body).Decode(&group); err != nil {
-		return 0, fmt.Errorf("failed to decode group response: %w", err)
+	if err := json.NewDecoder(bytes.NewReader(body)).Decode(&group); err != nil {
+		return 0, fmt.Errorf("failed to decode group response: %w, body: %s", err, string(body))
 	}
 
 	return group.ID, nil

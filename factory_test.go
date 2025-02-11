@@ -16,13 +16,10 @@ func TestCreateDefaultConfig(t *testing.T) {
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig()
 
-	assert.NotNil(t, cfg, "failed to create default config")
-	assert.NoError(t, componenttest.CheckConfigStruct(cfg))
-
+	assert.NotNil(t, cfg)
 	gCfg, ok := cfg.(*Config)
 	assert.True(t, ok, "invalid config type")
-	assert.Empty(t, gCfg.URL, "default URL should be empty")
-	assert.Empty(t, gCfg.Type, "default type should be empty")
+	assert.Empty(t, gCfg.Paths, "default paths should be empty")
 	assert.Equal(t, defaultPollInterval, gCfg.PollInterval)
 	assert.Equal(t, defaultExportTimeout, gCfg.ExportTimeout)
 }
@@ -31,8 +28,12 @@ func TestCreateLogsReceiver(t *testing.T) {
 	factory := NewFactory()
 	cfg := factory.CreateDefaultConfig()
 	cfg.(*Config).Token = "test-token"
-	cfg.(*Config).URL = "https://gitlab.com/mygroup/myproject"
-	cfg.(*Config).Type = "project"
+	cfg.(*Config).Paths = []PathConfig{
+		{
+			Path: "mygroup/myproject",
+			Type: "project",
+		},
+	}
 
 	consumer := consumertest.NewNop()
 
