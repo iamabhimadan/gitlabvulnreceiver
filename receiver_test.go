@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/iamabhimadan/gitlabvulnreceiver/internal/state"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"gitlab.com/clario-clinical/personal-projects/abhishek-madan/opentelemetry/gitlabvulnreceiver/internal/state"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer/consumertest"
 	"go.opentelemetry.io/collector/pdata/plog"
