@@ -56,11 +56,22 @@ type GitLabGroup struct {
 }
 
 func NewGitLabClient(cfg *Config, settings component.TelemetrySettings) *GitLabClient {
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{},
+		DialContext: (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext,
+		MaxIdleConns:          100,
+		IdleConnTimeout:       90 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
+	}
+
 	httpClient := &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{},
-		},
+		Timeout:   30 * time.Second,
+		Transport: transport,
 	}
 
 	return &GitLabClient{
@@ -323,7 +334,9 @@ func (c *GitLabClient) buildURL(endpoint string) string {
 }
 
 func (c *GitLabClient) resolveProjectID(ctx context.Context, projectPath string) (int, error) {
-	endpoint := c.buildURL(fmt.Sprintf("%s/projects/%s", apiV4Path, url.PathEscape(projectPath)))
+	// Double URL encode the path as required by GitLab API
+	encodedPath := url.PathEscape(url.PathEscape(projectPath))
+	endpoint := c.buildURL(fmt.Sprintf("%s/projects/%s", apiV4Path, encodedPath))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -334,6 +347,10 @@ func (c *GitLabClient) resolveProjectID(ctx context.Context, projectPath string)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			return 0, fmt.Errorf("request timed out: %w", err)
+		}
 		return 0, fmt.Errorf("failed to get project: %w", err)
 	}
 	defer resp.Body.Close()
@@ -342,7 +359,8 @@ func (c *GitLabClient) resolveProjectID(ctx context.Context, projectPath string)
 		return 0, fmt.Errorf("project not found: %s", projectPath)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("failed to get project, status: %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("failed to get project, status: %d, body: %s", resp.StatusCode, string(body))
 	}
 
 	var project GitLabProject
@@ -354,7 +372,9 @@ func (c *GitLabClient) resolveProjectID(ctx context.Context, projectPath string)
 }
 
 func (c *GitLabClient) resolveGroupID(ctx context.Context, groupPath string) (int, error) {
-	endpoint := c.buildURL(fmt.Sprintf("%s/groups/%s", apiV4Path, url.PathEscape(groupPath)))
+	// Double URL encode the path as required by GitLab API
+	encodedPath := url.PathEscape(url.PathEscape(groupPath))
+	endpoint := c.buildURL(fmt.Sprintf("%s/groups/%s", apiV4Path, encodedPath))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -365,6 +385,10 @@ func (c *GitLabClient) resolveGroupID(ctx context.Context, groupPath string) (in
 
 	resp, err := c.client.Do(req)
 	if err != nil {
+		var netErr net.Error
+		if errors.As(err, &netErr) && netErr.Timeout() {
+			return 0, fmt.Errorf("request timed out: %w", err)
+		}
 		return 0, fmt.Errorf("failed to get group: %w", err)
 	}
 	defer resp.Body.Close()
@@ -373,7 +397,8 @@ func (c *GitLabClient) resolveGroupID(ctx context.Context, groupPath string) (in
 		return 0, fmt.Errorf("group not found: %s", groupPath)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return 0, fmt.Errorf("failed to get group, status: %d", resp.StatusCode)
+		body, _ := io.ReadAll(resp.Body)
+		return 0, fmt.Errorf("failed to get group, status: %d, body: %s", resp.StatusCode, string(body))
 	}
 
 	var group GitLabGroup
