@@ -9,61 +9,70 @@ spec:
     codeowners:
       active: [abhishek-madan]
 
-config:
-  paths:
-    description: List of GitLab paths to monitor
-    type: list
-    element:
-      type: struct
-      fields:
-        path:
-          description: Full path to GitLab project or group
-          type: string
-          required: true
-        type:
-          description: Type of path - either "project" or "group"
-          type: string
-          required: true
-          valid_values: [project, group]
+  config:
+    paths:
+      description: Single GitLab project or group to monitor
+      type: list
+      element:
+        type: struct
+        fields:
+          id:
+            description: GitLab project or group ID
+            type: string
+            required: true
+          type:
+            description: Type - either "project" or "group"
+            type: string
+            required: true
+            valid_values: [project, group]
+      validation:
+        min_items: 1
+        max_items: 1
 
-  token:
-    description: GitLab API token with read_api scope
-    type: string
-    required: true
+    token:
+      description: GitLab API token with read_api scope
+      type: string
+      required: true
 
-  base_url:
-    description: Base URL of GitLab instance
-    type: string
-    default: https://gitlab.com
+    base_url:
+      description: Base URL of GitLab instance
+      type: string
+      default: https://gitlab.com
 
-  poll_interval:
-    description: How often to check for new vulnerabilities
-    type: duration
-    default: 5m
+    poll_interval:
+      description: How often to check for new vulnerabilities
+      type: duration
+      default: 5m
 
-  export_timeout:
-    description: Maximum time to wait for export completion
-    type: duration
-    default: 30m
+    export_timeout:
+      description: Maximum time to wait for export completion
+      type: duration
+      default: 30m
 
-  state_file:
-    description: Path to file for storing state
-    type: string
-    default: ""
+    state_file:
+      description: Path to file for storing state
+      type: string
+      default: ""
 
-resource_attributes:
-  gitlab.project.id:
-    description: The GitLab project ID
-    type: string
-    enabled: true
-  gitlab.group.id:
-    description: The GitLab group ID
-    type: string
-    enabled: true
-  gitlab.export.id:
-    description: The vulnerability export ID
-    type: string
-    enabled: true
+  resource_attributes:
+    gitlab.project.id:
+      description: The GitLab project ID
+      type: string
+      enabled: true
+    gitlab.group.id:
+      description: The GitLab group ID
+      type: string
+      enabled: true
+    gitlab.export.id:
+      description: The vulnerability export ID
+      type: string
+      enabled: true
+
+  logs:
+    vulnerability:
+      description: A vulnerability finding from GitLab
+      enabled: true
+      attributes: [vulnerability.id, vulnerability.title, vulnerability.description, vulnerability.state, vulnerability.severity, vulnerability.confidence, vulnerability.report_type, vulnerability.project_name, vulnerability.project_id, vulnerability.scanner, vulnerability.scanner_id, vulnerability.finding_id, vulnerability.identifiers, vulnerability.project_default_branch, vulnerability.solution, vulnerability.file, vulnerability.line, vulnerability.location_link, vulnerability.location_fingerprint, vulnerability.tracking_status, vulnerability.links, vulnerability.remediations, vulnerability.evidence, vulnerability.assets, vulnerability.discovered_at, vulnerability.confirmed_at, vulnerability.resolved_at, vulnerability.dismissed_at, vulnerability.dismissal_reason, vulnerability.dismissal_comment]
 
 attributes:
   vulnerability.id:
@@ -156,12 +165,6 @@ attributes:
   vulnerability.dismissal_comment:
     description: Comment explaining dismissal
     type: string
-
-logs:
-  vulnerability:
-    description: A vulnerability finding from GitLab
-    enabled: true
-    attributes: [vulnerability.id, vulnerability.title, vulnerability.description, vulnerability.state, vulnerability.severity, vulnerability.confidence, vulnerability.report_type, vulnerability.project_name, vulnerability.project_id, vulnerability.scanner, vulnerability.scanner_id, vulnerability.finding_id, vulnerability.identifiers, vulnerability.project_default_branch, vulnerability.solution, vulnerability.file, vulnerability.line, vulnerability.location_link, vulnerability.location_fingerprint, vulnerability.tracking_status, vulnerability.links, vulnerability.remediations, vulnerability.evidence, vulnerability.assets, vulnerability.discovered_at, vulnerability.confirmed_at, vulnerability.resolved_at, vulnerability.dismissed_at, vulnerability.dismissal_reason, vulnerability.dismissal_comment]
 
 status: beta
 stability: beta

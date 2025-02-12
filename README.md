@@ -1,42 +1,45 @@
 # GitLab Vulnerability Receiver
 
-The GitLab vulnerability receiver fetches vulnerability data from GitLab projects or groups using the vulnerability export API.
+The GitLab Vulnerability Receiver fetches vulnerability data from GitLab projects and groups using the GitLab Security API.
 
 ## Configuration
 
-### Required Parameters
+The GitLab Vulnerability Receiver monitors a single GitLab project or group at a time. The configuration requires:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `token` | string | GitLab API token with read_api scope |
-| `url` | string | Full URL to GitLab project or group (e.g., "https://gitlab.com/mygroup/myproject" or "https://gitlab.com/mygroup") |
-| `type` | string | Type of URL - either "project" or "group" |
+- `token`: GitLab API token with read_api scope
+- `paths`: Exactly one path configuration specifying:
+  - `id`: GitLab project or group ID
+  - `type`: Either "project" or "group"
 
-### Optional Parameters
+Optional configurations:
+- `base_url`: GitLab instance URL (default: "https://gitlab.com")
+- `poll_interval`: How often to check for new vulnerabilities (default: 5m)
+- `export_timeout`: Maximum time to wait for export completion (default: 30m)
+- `state_file`: Path to file for storing state
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `base_url` | string | "https://gitlab.com" | Base URL of GitLab instance |
-| `poll_interval` | duration | 5m | How often to check for new vulnerabilities |
-| `export_timeout` | duration | 30m | Maximum time to wait for export completion |
-| `state_file` | string | "" | Path to file for storing state |
+### Example Configuration
 
-## Example Configuration
-
+For a project:
 ```yaml
 receivers:
   gitlab_vulnerability:
-    token: ${GITLAB_TOKEN}  # Use environment variable for sensitive data
-    url: "https://gitlab.com/mygroup/myproject"  # For a project
-    type: "project"
-    # OR
-    # url: "https://gitlab.com/mygroup"  # For a group
-    # type: "group"
-    base_url: "https://gitlab.com"  # Optional: for self-hosted GitLab
-    poll_interval: 10m  # Optional: check every 10 minutes
-    export_timeout: 1h  # Optional: wait up to 1 hour for large exports
-    state_file: "/var/lib/otelcol/gitlab_vulns.state"  # Optional: persist state
+    token: ${GITLAB_TOKEN}
+    paths:
+      - id: "12345"  # Single project ID
+        type: "project"
 ```
+
+For a group:
+```yaml
+receivers:
+  gitlab_vulnerability:
+    token: ${GITLAB_TOKEN}
+    paths:
+      - id: "67890"  # Single group ID
+        type: "group"
+```
+
+Note: To monitor multiple projects or groups, create separate receiver instances.
 
 ## How it Works
 

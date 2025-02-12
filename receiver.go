@@ -23,8 +23,8 @@ type GitLabClientInterface interface {
 	GetExport(ctx context.Context, projectID string, exportID int64) (*Export, error)
 	CreateExport(ctx context.Context, projectID string) (*Export, error)
 	CreateGroupExport(ctx context.Context, groupID string) (*Export, error)
-	resolveProjectID(ctx context.Context, projectPath string) (int, error)
-	resolveGroupID(ctx context.Context, groupPath string) (int, error)
+	validateProjectID(ctx context.Context, projectID string) error
+	validateGroupID(ctx context.Context, groupID string) error
 }
 
 type vulnerabilityReceiver struct {
@@ -77,25 +77,23 @@ func (r *vulnerabilityReceiver) pollForExports(ctx context.Context) {
 
 // Checks for new exports and processes them
 func (r *vulnerabilityReceiver) checkExports(ctx context.Context) error {
-	for _, path := range r.cfg.Paths {
-		var err error
-		switch path.Type {
-		case "project":
-			err = r.processProjectExports(ctx, path.Path)
-		case "group":
-			err = r.processGroupExports(ctx, path.Path)
-		default:
-			r.logger.Error("Invalid path type", zap.String("type", path.Type))
-			continue
-		}
-		if err != nil {
-			r.logger.Error("Failed to process exports",
-				zap.String("path", path.Path),
-				zap.String("type", path.Type),
-				zap.Error(err))
-			// Continue with other paths even if one fails
-			continue
-		}
+	path := r.cfg.Paths[0] // We know there's exactly one path
+	var err error
+	switch path.Type {
+	case "project":
+		err = r.processProjectExports(ctx, path.ID)
+	case "group":
+		err = r.processGroupExports(ctx, path.ID)
+	default:
+		r.logger.Error("Invalid path type", zap.String("type", path.Type))
+		return fmt.Errorf("invalid path type: %s", path.Type)
+	}
+	if err != nil {
+		r.logger.Error("Failed to process exports",
+			zap.String("id", path.ID),
+			zap.String("type", path.Type),
+			zap.Error(err))
+		return err
 	}
 	return nil
 }
@@ -278,40 +276,34 @@ func (r *vulnerabilityReceiver) Shutdown(ctx context.Context) error {
 	}
 }
 
-func (r *vulnerabilityReceiver) pollExport(ctx context.Context, projectID string, exportID int64) (*Export, error) {
-	timeoutCtx, cancel := context.WithTimeout(ctx, r.cfg.ExportTimeout)
-	defer cancel()
-
-	ticker := time.NewTicker(10 * time.Second) // Poll every 10 seconds
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-timeoutCtx.Done():
-			return nil, fmt.Errorf("export timed out after %v: %w", r.cfg.ExportTimeout, timeoutCtx.Err())
-		case <-ticker.C:
-			export, err := r.client.GetExport(timeoutCtx, projectID, exportID)
-			if err != nil {
-				// Log error but continue polling
-				r.logger.Error("Error checking export status", zap.Error(err))
-				continue
-			}
-
-			switch export.Status {
-			case "finished":
-				return export, nil
-			case "failed":
-				return nil, fmt.Errorf("export failed with status: %s", export.Status)
-			case "created", "started":
-				// Continue polling
-				r.logger.Debug("Export in progress",
-					zap.String("status", string(export.Status)),
-					zap.Int64("exportID", exportID))
-			default:
-				r.logger.Warn("Unknown export status",
-					zap.String("status", string(export.Status)),
-					zap.Int64("exportID", exportID))
-			}
-		}
+func (r *vulnerabilityReceiver) processProjectExports(ctx context.Context, projectID string) error {
+	// First validate the project ID
+	if err := r.client.validateProjectID(ctx, projectID); err != nil {
+		return fmt.Errorf("invalid project ID: %w", err)
 	}
+
+	// Create new export
+	export, err := r.client.CreateExport(ctx, projectID)
+	if err != nil {
+		return fmt.Errorf("failed to create export: %w", err)
+	}
+
+	// Process the export
+	return r.processExport(ctx, export)
+}
+
+func (r *vulnerabilityReceiver) processGroupExports(ctx context.Context, groupID string) error {
+	// First validate the group ID
+	if err := r.client.validateGroupID(ctx, groupID); err != nil {
+		return fmt.Errorf("invalid group ID: %w", err)
+	}
+
+	// Create new export
+	export, err := r.client.CreateGroupExport(ctx, groupID)
+	if err != nil {
+		return fmt.Errorf("failed to create group export: %w", err)
+	}
+
+	// Process the export
+	return r.processExport(ctx, export)
 }

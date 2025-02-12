@@ -180,14 +180,20 @@ func TestWaitForGroupExport(t *testing.T) {
 	assert.Equal(t, 3, attempts)
 }
 
-func TestResolveProjectID(t *testing.T) {
+func TestValidateProjectID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api/v4/projects/test-group%2Ftest-project", r.URL.Path)
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(GitLabProject{
-			ID:   123,
-			Path: "test-group/test-project",
-		})
+		assert.Equal(t, "/api/v4/projects/12345", r.URL.Path)
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "test-token", r.Header.Get("PRIVATE-TOKEN"))
+
+		switch r.URL.Path {
+		case "/api/v4/projects/12345":
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(GitLabProject{ID: 12345})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"message": "404 Project Not Found"})
+		}
 	}))
 	defer server.Close()
 
@@ -197,19 +203,30 @@ func TestResolveProjectID(t *testing.T) {
 		token:   "test-token",
 	}
 
-	id, err := client.resolveProjectID(context.Background(), "test-group/test-project")
+	// Test valid project ID
+	err := client.validateProjectID(context.Background(), "12345")
 	require.NoError(t, err)
-	assert.Equal(t, 123, id)
+
+	// Test invalid project ID
+	err = client.validateProjectID(context.Background(), "99999")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "project ID 99999 not found")
 }
 
-func TestResolveGroupID(t *testing.T) {
+func TestValidateGroupID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api/v4/groups/test-group", r.URL.Path)
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(GitLabGroup{
-			ID:   456,
-			Path: "test-group",
-		})
+		assert.Equal(t, "/api/v4/groups/67890", r.URL.Path)
+		assert.Equal(t, "GET", r.Method)
+		assert.Equal(t, "test-token", r.Header.Get("PRIVATE-TOKEN"))
+
+		switch r.URL.Path {
+		case "/api/v4/groups/67890":
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(GitLabGroup{ID: 67890})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+			json.NewEncoder(w).Encode(map[string]string{"message": "404 Group Not Found"})
+		}
 	}))
 	defer server.Close()
 
@@ -219,7 +236,12 @@ func TestResolveGroupID(t *testing.T) {
 		token:   "test-token",
 	}
 
-	id, err := client.resolveGroupID(context.Background(), "test-group")
+	// Test valid group ID
+	err := client.validateGroupID(context.Background(), "67890")
 	require.NoError(t, err)
-	assert.Equal(t, 456, id)
+
+	// Test invalid group ID
+	err = client.validateGroupID(context.Background(), "99999")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "group ID 99999 not found")
 }

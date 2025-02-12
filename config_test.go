@@ -20,7 +20,7 @@ func TestConfig_Validate(t *testing.T) {
 				Token: "test-token",
 				Paths: []PathConfig{
 					{
-						Path: "mygroup/myproject",
+						ID:   "12345",
 						Type: "project",
 					},
 				},
@@ -33,7 +33,7 @@ func TestConfig_Validate(t *testing.T) {
 				Token: "test-token",
 				Paths: []PathConfig{
 					{
-						Path: "mygroup",
+						ID:   "67890",
 						Type: "group",
 					},
 				},
@@ -41,11 +41,38 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "no paths",
+			config: Config{
+				Token: "test-token",
+				Paths: []PathConfig{},
+			},
+			wantErr: true,
+			errMsg:  "exactly one path must be configured",
+		},
+		{
+			name: "multiple paths",
+			config: Config{
+				Token: "test-token",
+				Paths: []PathConfig{
+					{
+						ID:   "12345",
+						Type: "project",
+					},
+					{
+						ID:   "67890",
+						Type: "group",
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "exactly one path must be configured",
+		},
+		{
 			name: "missing token",
 			config: Config{
 				Paths: []PathConfig{
 					{
-						Path: "mygroup",
+						ID:   "67890",
 						Type: "group",
 					},
 				},
@@ -54,20 +81,12 @@ func TestConfig_Validate(t *testing.T) {
 			errMsg:  "token cannot be empty",
 		},
 		{
-			name: "missing paths",
-			config: Config{
-				Token: "test-token",
-			},
-			wantErr: true,
-			errMsg:  "at least one path must be configured",
-		},
-		{
 			name: "invalid type",
 			config: Config{
 				Token: "test-token",
 				Paths: []PathConfig{
 					{
-						Path: "mygroup",
+						ID:   "67890",
 						Type: "invalid",
 					},
 				},
@@ -76,18 +95,18 @@ func TestConfig_Validate(t *testing.T) {
 			errMsg:  "type must be either 'project' or 'group'",
 		},
 		{
-			name: "empty path",
+			name: "empty id",
 			config: Config{
 				Token: "test-token",
 				Paths: []PathConfig{
 					{
-						Path: "",
+						ID:   "",
 						Type: "project",
 					},
 				},
 			},
 			wantErr: true,
-			errMsg:  "path cannot be empty",
+			errMsg:  "id cannot be empty",
 		},
 	}
 
@@ -107,25 +126,25 @@ func TestConfig_Validate(t *testing.T) {
 func TestConfig_GetPath(t *testing.T) {
 	tests := []struct {
 		name     string
-		path     string
+		id       string
 		expected string
 	}{
 		{
 			name:     "project path",
-			path:     "mygroup/myproject",
-			expected: "mygroup/myproject",
+			id:       "12345",
+			expected: "12345",
 		},
 		{
 			name:     "group path",
-			path:     "mygroup",
-			expected: "mygroup",
+			id:       "67890",
+			expected: "67890",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pathConfig := PathConfig{
-				Path: tt.path,
+				ID:   tt.id,
 				Type: "project",
 			}
 			cfg := &Config{}

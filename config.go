@@ -15,8 +15,8 @@ const (
 )
 
 type PathConfig struct {
-	Path string `mapstructure:"path"`
-	Type string `mapstructure:"type"`
+	ID   string `mapstructure:"id"`   // Project or group ID
+	Type string `mapstructure:"type"` // "project" or "group"
 }
 
 type Config struct {
@@ -38,17 +38,16 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("token cannot be empty")
 	}
 
-	if len(c.Paths) == 0 {
-		return fmt.Errorf("at least one path must be configured")
+	if len(c.Paths) != 1 {
+		return fmt.Errorf("exactly one path must be configured")
 	}
 
-	for _, p := range c.Paths {
-		if p.Path == "" {
-			return fmt.Errorf("path cannot be empty")
-		}
-		if p.Type != "project" && p.Type != "group" {
-			return fmt.Errorf("type must be either 'project' or 'group', got: %s", p.Type)
-		}
+	path := c.Paths[0]
+	if path.ID == "" {
+		return fmt.Errorf("id cannot be empty")
+	}
+	if path.Type != "project" && path.Type != "group" {
+		return fmt.Errorf("type must be either 'project' or 'group', got: %s", path.Type)
 	}
 
 	if c.BaseURL == "" {
@@ -68,5 +67,5 @@ func (c *Config) Validate() error {
 
 // GetPath returns the GitLab path from the URL
 func (c *Config) GetPath(pathConfig PathConfig) string {
-	return strings.TrimSpace(pathConfig.Path)
+	return strings.TrimSpace(pathConfig.ID)
 }

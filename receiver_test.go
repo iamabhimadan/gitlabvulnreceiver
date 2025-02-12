@@ -23,8 +23,8 @@ type mockGitLabClient struct {
 	getExportDataFunc     func(ctx context.Context, url string) (io.ReadCloser, error)
 	waitForExportFunc     func(ctx context.Context, projectID string, exportID int64, timeout time.Duration) (*Export, error)
 	createGroupExportFunc func(ctx context.Context, groupID string) (*Export, error)
-	resolveProjectIDFunc  func(ctx context.Context, projectPath string) (int, error)
-	resolveGroupIDFunc    func(ctx context.Context, groupPath string) (int, error)
+	validateProjectIDFunc func(ctx context.Context, projectID string) error
+	validateGroupIDFunc   func(ctx context.Context, groupID string) error
 }
 
 func (m *mockGitLabClient) GetExport(ctx context.Context, projectID string, exportID int64) (*Export, error) {
@@ -59,18 +59,18 @@ func (m *mockGitLabClient) CreateGroupExport(ctx context.Context, groupID string
 	return nil, nil
 }
 
-func (m *mockGitLabClient) resolveProjectID(ctx context.Context, projectPath string) (int, error) {
-	if m.resolveProjectIDFunc != nil {
-		return m.resolveProjectIDFunc(ctx, projectPath)
+func (m *mockGitLabClient) validateProjectID(ctx context.Context, projectID string) error {
+	if m.validateProjectIDFunc != nil {
+		return m.validateProjectIDFunc(ctx, projectID)
 	}
-	return 0, nil
+	return nil
 }
 
-func (m *mockGitLabClient) resolveGroupID(ctx context.Context, groupPath string) (int, error) {
-	if m.resolveGroupIDFunc != nil {
-		return m.resolveGroupIDFunc(ctx, groupPath)
+func (m *mockGitLabClient) validateGroupID(ctx context.Context, groupID string) error {
+	if m.validateGroupIDFunc != nil {
+		return m.validateGroupIDFunc(ctx, groupID)
 	}
-	return 0, nil
+	return nil
 }
 
 func TestVulnerabilityReceiver_ConvertToLogs(t *testing.T) {
@@ -117,14 +117,23 @@ func TestVulnerabilityReceiver_ConvertToLogs(t *testing.T) {
 
 func TestExportTimeout(t *testing.T) {
 	cfg := &Config{
-		ExportTimeout: 2 * time.Second, // Short timeout for testing
+		ExportTimeout: 2 * time.Second,
+		Paths: []PathConfig{{
+			ID:   "12345",
+			Type: "project",
+		}},
 	}
 
 	mockClient := &mockGitLabClient{
-		getExportFunc: func(ctx context.Context, projectID string, exportID int64) (*Export, error) {
-			// Simulate a long-running export
-			time.Sleep(3 * time.Second)
-			return &Export{Status: "started"}, nil
+		validateProjectIDFunc: func(ctx context.Context, projectID string) error {
+			return nil
+		},
+		createExportFunc: func(ctx context.Context, projectID string) (*Export, error) {
+			return &Export{ID: 123}, nil
+		},
+		waitForExportFunc: func(ctx context.Context, projectID string, exportID int64, timeout time.Duration) (*Export, error) {
+			time.Sleep(3 * time.Second) // Simulate timeout
+			return nil, context.DeadlineExceeded
 		},
 	}
 
@@ -134,23 +143,20 @@ func TestExportTimeout(t *testing.T) {
 		logger: zap.NewNop(),
 	}
 
-	_, err := receiver.pollExport(context.Background(), "test-project", 123)
+	err := receiver.processProjectExports(context.Background(), "12345")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "export timed out")
+	require.Contains(t, err.Error(), "failed to wait for export")
 }
 
 func TestProcessGroupExports(t *testing.T) {
-	// Create a temporary state file for testing
 	stateFile := t.TempDir() + "/test.state"
 
 	cfg := &Config{
 		ExportTimeout: 30 * time.Second,
-		Paths: []PathConfig{
-			{
-				Path: "test-group",
-				Type: "group",
-			},
-		},
+		Paths: []PathConfig{{
+			ID:   "67890", // Use ID instead of Path
+			Type: "group",
+		}},
 		StateFile: stateFile,
 	}
 
@@ -159,9 +165,6 @@ func TestProcessGroupExports(t *testing.T) {
 	require.NoError(t, err)
 
 	mockClient := &mockGitLabClient{
-		resolveGroupIDFunc: func(ctx context.Context, groupPath string) (int, error) {
-			return 123, nil
-		},
 		createGroupExportFunc: func(ctx context.Context, groupID string) (*Export, error) {
 			return &Export{
 				ID:        456,
@@ -201,49 +204,74 @@ func TestProcessGroupExports(t *testing.T) {
 
 func TestProcessExportErrors(t *testing.T) {
 	tests := []struct {
-		name        string
-		mockClient  *mockGitLabClient
-		wantErr     bool
-		errContains string
+		name    string
+		config  Config
+		client  *mockGitLabClient
+		wantErr bool
+		errMsg  string
 	}{
 		{
-			name: "project resolution error",
-			mockClient: &mockGitLabClient{
-				resolveProjectIDFunc: func(ctx context.Context, projectPath string) (int, error) {
-					return 0, fmt.Errorf("project not found")
+			name: "project validation error",
+			config: Config{
+				Paths: []PathConfig{{
+					ID:   "12345",
+					Type: "project",
+				}},
+			},
+			client: &mockGitLabClient{
+				validateProjectIDFunc: func(ctx context.Context, projectID string) error {
+					return fmt.Errorf("project not found")
 				},
 			},
-			wantErr:     true,
-			errContains: "failed to resolve project ID",
+			wantErr: true,
+			errMsg:  "invalid project ID",
 		},
 		{
-			name: "export creation error",
-			mockClient: &mockGitLabClient{
-				resolveProjectIDFunc: func(ctx context.Context, projectPath string) (int, error) {
-					return 123, nil
+			name: "group validation error",
+			config: Config{
+				Paths: []PathConfig{{
+					ID:   "67890",
+					Type: "group",
+				}},
+			},
+			client: &mockGitLabClient{
+				validateGroupIDFunc: func(ctx context.Context, groupID string) error {
+					return fmt.Errorf("group not found")
 				},
+			},
+			wantErr: true,
+			errMsg:  "invalid group ID",
+		},
+		{
+			name: "project resolution error",
+			config: Config{
+				Paths: []PathConfig{{
+					ID:   "12345",
+					Type: "project",
+				}},
+			},
+			client: &mockGitLabClient{
 				createExportFunc: func(ctx context.Context, projectID string) (*Export, error) {
 					return nil, fmt.Errorf("export creation failed")
 				},
 			},
-			wantErr:     true,
-			errContains: "failed to create export",
+			wantErr: true,
+			errMsg:  "failed to create export",
 		},
-		// Add more error cases
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			receiver := &vulnerabilityReceiver{
-				cfg:    &Config{},
-				client: tt.mockClient,
+				cfg:    &tt.config,
+				client: tt.client,
 				logger: zap.NewNop(),
 			}
 
 			err := receiver.processProjectExports(context.Background(), "test/project")
 			if tt.wantErr {
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), tt.errContains)
+				assert.Contains(t, err.Error(), tt.errMsg)
 			} else {
 				require.NoError(t, err)
 			}
