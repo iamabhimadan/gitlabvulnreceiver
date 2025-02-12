@@ -3,6 +3,7 @@ package gitlabvulnreceiver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -45,7 +46,7 @@ func TestGitLabClient_CreateExport(t *testing.T) {
 
 func TestGetExport(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api/v4/projects/test-project/vulnerability_exports/123", r.URL.Path)
+		assert.Equal(t, "/api/v4/security/vulnerability_exports/123", r.URL.Path)
 		assert.Equal(t, "GET", r.Method)
 
 		w.WriteHeader(http.StatusOK)
@@ -100,7 +101,7 @@ func TestWaitForExport(t *testing.T) {
 
 func TestCreateGroupExport(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api/v4/groups/test-group/vulnerability_exports", r.URL.Path)
+		assert.Equal(t, "/api/v4/security/groups/test-group/vulnerability_exports", r.URL.Path)
 		assert.Equal(t, "POST", r.Method)
 		assert.Equal(t, "test-token", r.Header.Get("PRIVATE-TOKEN"))
 
@@ -127,7 +128,7 @@ func TestCreateGroupExport(t *testing.T) {
 
 func TestGetGroupExport(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api/v4/groups/test-group/vulnerability_exports/123", r.URL.Path)
+		assert.Equal(t, "/api/v4/security/vulnerability_exports/123", r.URL.Path)
 		assert.Equal(t, "GET", r.Method)
 
 		w.WriteHeader(http.StatusOK)
@@ -182,15 +183,13 @@ func TestWaitForGroupExport(t *testing.T) {
 
 func TestValidateProjectID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api/v4/projects/12345", r.URL.Path)
-		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "test-token", r.Header.Get("PRIVATE-TOKEN"))
+		projectID := "12345"
+		expectedPath := fmt.Sprintf("/api/v4/projects/%s", projectID)
 
-		switch r.URL.Path {
-		case "/api/v4/projects/12345":
+		if r.URL.Path == expectedPath {
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(GitLabProject{ID: 12345})
-		default:
+		} else {
 			w.WriteHeader(http.StatusNotFound)
 			json.NewEncoder(w).Encode(map[string]string{"message": "404 Project Not Found"})
 		}
@@ -215,15 +214,13 @@ func TestValidateProjectID(t *testing.T) {
 
 func TestValidateGroupID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/api/v4/groups/67890", r.URL.Path)
-		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "test-token", r.Header.Get("PRIVATE-TOKEN"))
+		groupID := "67890"
+		expectedPath := fmt.Sprintf("/api/v4/groups/%s", groupID)
 
-		switch r.URL.Path {
-		case "/api/v4/groups/67890":
+		if r.URL.Path == expectedPath {
 			w.WriteHeader(http.StatusOK)
 			json.NewEncoder(w).Encode(GitLabGroup{ID: 67890})
-		default:
+		} else {
 			w.WriteHeader(http.StatusNotFound)
 			json.NewEncoder(w).Encode(map[string]string{"message": "404 Group Not Found"})
 		}

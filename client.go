@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -36,13 +37,29 @@ const (
 
 type Export struct {
 	ID        int64        `json:"id"`
-	ProjectID string       `json:"project_id"`
+	ProjectID interface{}  `json:"project_id"` // Can be string or number
 	Status    ExportStatus `json:"status"`
 	CreatedAt time.Time    `json:"created_at"`
 	Format    string       `json:"format"`
 	Links     struct {
 		Download string `json:"download"`
 	} `json:"_links"`
+}
+
+// GetProjectID returns project ID as string regardless of original type
+func (e *Export) GetProjectID() string {
+	switch v := e.ProjectID.(type) {
+	case string:
+		return v
+	case float64:
+		return fmt.Sprintf("%.0f", v)
+	case int:
+		return strconv.Itoa(v)
+	case int64:
+		return strconv.FormatInt(v, 10)
+	default:
+		return ""
+	}
 }
 
 type GitLabProject struct {
@@ -83,7 +100,7 @@ func NewGitLabClient(cfg *Config, settings component.TelemetrySettings) *GitLabC
 
 // CreateExport initiates a new vulnerability export
 func (c *GitLabClient) CreateExport(ctx context.Context, projectID string) (*Export, error) {
-	endpoint := c.buildURL(fmt.Sprintf("%s/security/projects/%s/vulnerability_exports", apiV4Path, projectID))
+	endpoint := c.buildURL(fmt.Sprintf("/api/v4/security/projects/%s/vulnerability_exports", projectID))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
 	if err != nil {
@@ -114,36 +131,7 @@ func (c *GitLabClient) CreateExport(ctx context.Context, projectID string) (*Exp
 
 // GetExport gets the status of an export
 func (c *GitLabClient) GetExport(ctx context.Context, projectID string, exportID int64) (*Export, error) {
-	maxRetries := 3
-	backoff := time.Second
-
-	var lastErr error
-	for retry := 0; retry < maxRetries; retry++ {
-		export, err := c.getExportOnce(ctx, projectID, exportID)
-		if err == nil {
-			return export, nil
-		}
-
-		lastErr = err
-		// Only retry on temporary errors (network issues, 5xx responses)
-		if !isTemporaryError(err) {
-			return nil, err
-		}
-
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(backoff * time.Duration(retry+1)):
-			continue
-		}
-	}
-
-	return nil, fmt.Errorf("failed after %d retries: %w", maxRetries, lastErr)
-}
-
-func (c *GitLabClient) getExportOnce(ctx context.Context, projectID string, exportID int64) (*Export, error) {
-	endpoint := c.buildURL(fmt.Sprintf("/api/v4/projects/%s/vulnerability_exports/%d",
-		url.PathEscape(projectID), exportID))
+	endpoint := c.buildURL(fmt.Sprintf("/api/v4/security/vulnerability_exports/%d", exportID))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -239,7 +227,7 @@ func (c *GitLabClient) WaitForExport(ctx context.Context, projectID string, expo
 
 // CreateGroupExport initiates a new vulnerability export for a group
 func (c *GitLabClient) CreateGroupExport(ctx context.Context, groupID string) (*Export, error) {
-	endpoint := c.buildURL(fmt.Sprintf("%s/security/groups/%s/vulnerability_exports", apiV4Path, groupID))
+	endpoint := c.buildURL(fmt.Sprintf("/api/v4/security/groups/%s/vulnerability_exports", groupID))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
 	if err != nil {
@@ -270,8 +258,7 @@ func (c *GitLabClient) CreateGroupExport(ctx context.Context, groupID string) (*
 
 // GetGroupExport gets the status of a group export
 func (c *GitLabClient) GetGroupExport(ctx context.Context, groupID string, exportID int64) (*Export, error) {
-	endpoint := c.buildURL(fmt.Sprintf("/api/v4/groups/%s/vulnerability_exports/%d",
-		url.PathEscape(groupID), exportID))
+	endpoint := c.buildURL(fmt.Sprintf("/api/v4/security/vulnerability_exports/%d", exportID))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -334,13 +321,13 @@ func (c *GitLabClient) buildURL(endpoint string) string {
 }
 
 func (c *GitLabClient) validateProjectID(ctx context.Context, projectID string) error {
-	endpoint := c.buildURL(fmt.Sprintf("%s/projects/%s", apiV4Path, projectID))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	url := fmt.Sprintf("%s/api/v4/projects/%s", c.baseURL, projectID)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create project validation request: %w", err)
+		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("PRIVATE-TOKEN", c.token)
 
+	req.Header.Set("PRIVATE-TOKEN", string(c.token))
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to validate project: %w", err)
@@ -351,20 +338,19 @@ func (c *GitLabClient) validateProjectID(ctx context.Context, projectID string) 
 		return fmt.Errorf("project ID %s not found", projectID)
 	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to validate project, status: %d, body: %s", resp.StatusCode, string(body))
+		return fmt.Errorf("failed to validate project, status: %d", resp.StatusCode)
 	}
 	return nil
 }
 
 func (c *GitLabClient) validateGroupID(ctx context.Context, groupID string) error {
-	endpoint := c.buildURL(fmt.Sprintf("%s/groups/%s", apiV4Path, groupID))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	url := fmt.Sprintf("%s/api/v4/groups/%s", c.baseURL, groupID)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return fmt.Errorf("failed to create group validation request: %w", err)
+		return fmt.Errorf("failed to create request: %w", err)
 	}
-	req.Header.Set("PRIVATE-TOKEN", c.token)
 
+	req.Header.Set("PRIVATE-TOKEN", string(c.token))
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to validate group: %w", err)
@@ -375,8 +361,7 @@ func (c *GitLabClient) validateGroupID(ctx context.Context, groupID string) erro
 		return fmt.Errorf("group ID %s not found", groupID)
 	}
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to validate group, status: %d, body: %s", resp.StatusCode, string(body))
+		return fmt.Errorf("failed to validate group, status: %d", resp.StatusCode)
 	}
 	return nil
 }

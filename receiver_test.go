@@ -222,6 +222,12 @@ func TestProcessExportErrors(t *testing.T) {
 				validateProjectIDFunc: func(ctx context.Context, projectID string) error {
 					return fmt.Errorf("project not found")
 				},
+				createExportFunc: func(ctx context.Context, projectID string) (*Export, error) {
+					return &Export{
+						ID:        123,
+						ProjectID: projectID,
+					}, nil
+				},
 			},
 			wantErr: true,
 			errMsg:  "invalid project ID",
@@ -237,6 +243,19 @@ func TestProcessExportErrors(t *testing.T) {
 			client: &mockGitLabClient{
 				validateGroupIDFunc: func(ctx context.Context, groupID string) error {
 					return fmt.Errorf("group not found")
+				},
+				createGroupExportFunc: func(ctx context.Context, groupID string) (*Export, error) {
+					return &Export{
+						ID:        123,
+						ProjectID: groupID,
+					}, nil
+				},
+				waitForExportFunc: func(ctx context.Context, projectID string, exportID int64, timeout time.Duration) (*Export, error) {
+					return &Export{
+						ID:        123,
+						ProjectID: projectID,
+						Status:    ExportStatus("finished"),
+					}, nil
 				},
 			},
 			wantErr: true,
@@ -268,7 +287,13 @@ func TestProcessExportErrors(t *testing.T) {
 				logger: zap.NewNop(),
 			}
 
-			err := receiver.processProjectExports(context.Background(), "test/project")
+			var err error
+			if tt.config.Paths[0].Type == "project" {
+				err = receiver.processProjectExports(context.Background(), tt.config.Paths[0].ID)
+			} else {
+				err = receiver.processGroupExports(context.Background(), tt.config.Paths[0].ID)
+			}
+
 			if tt.wantErr {
 				require.Error(t, err)
 				assert.Contains(t, err.Error(), tt.errMsg)

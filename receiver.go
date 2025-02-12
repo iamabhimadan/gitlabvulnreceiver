@@ -101,7 +101,7 @@ func (r *vulnerabilityReceiver) checkExports(ctx context.Context) error {
 // Processes a single export
 func (r *vulnerabilityReceiver) processExport(ctx context.Context, export *Export) error {
 	// Wait for export to complete
-	export, err := r.client.WaitForExport(ctx, export.ProjectID, export.ID, r.cfg.ExportTimeout)
+	export, err := r.client.WaitForExport(ctx, export.GetProjectID(), export.ID, r.cfg.ExportTimeout)
 	if err != nil {
 		return fmt.Errorf("failed to wait for export: %w", err)
 	}
@@ -162,7 +162,7 @@ func (r *vulnerabilityReceiver) processExport(ctx context.Context, export *Expor
 
 	// Update state
 	r.stateManager.UpdateState(map[string]string{
-		"Project Name": export.ProjectID,
+		"Project Name": export.GetProjectID(),
 		"Export ID":    fmt.Sprintf("%d", export.ID),
 	})
 
@@ -176,7 +176,7 @@ func (r *vulnerabilityReceiver) convertToLogs(header []string, record []string, 
 
 	// Add resource attributes
 	attrs := rl.Resource().Attributes()
-	attrs.PutStr("gitlab.project.id", export.ProjectID)
+	attrs.PutStr("gitlab.project.id", export.GetProjectID())
 	attrs.PutStr("gitlab.export.id", fmt.Sprintf("%d", export.ID))
 
 	// Create log record
@@ -279,6 +279,9 @@ func (r *vulnerabilityReceiver) Shutdown(ctx context.Context) error {
 func (r *vulnerabilityReceiver) processProjectExports(ctx context.Context, projectID string) error {
 	// First validate the project ID
 	if err := r.client.validateProjectID(ctx, projectID); err != nil {
+		r.logger.Error("Invalid project ID",
+			zap.String("id", projectID),
+			zap.Error(err))
 		return fmt.Errorf("invalid project ID: %w", err)
 	}
 
@@ -295,6 +298,9 @@ func (r *vulnerabilityReceiver) processProjectExports(ctx context.Context, proje
 func (r *vulnerabilityReceiver) processGroupExports(ctx context.Context, groupID string) error {
 	// First validate the group ID
 	if err := r.client.validateGroupID(ctx, groupID); err != nil {
+		r.logger.Error("Invalid group ID",
+			zap.String("id", groupID),
+			zap.Error(err))
 		return fmt.Errorf("invalid group ID: %w", err)
 	}
 
