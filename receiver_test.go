@@ -178,8 +178,10 @@ func TestProcessGroupExports(t *testing.T) {
 				ProjectID: projectID,
 				Status:    ExportStatus("finished"),
 				Links: struct {
+					Self     string `json:"self"`
 					Download string `json:"download"`
 				}{
+					Self:     "https://gitlab.com/export/self",
 					Download: "https://gitlab.com/export/download",
 				},
 			}, nil

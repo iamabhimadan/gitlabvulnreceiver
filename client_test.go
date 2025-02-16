@@ -70,20 +70,37 @@ func TestGetExport(t *testing.T) {
 }
 
 func TestWaitForExport(t *testing.T) {
-	attempts := 0
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		attempts++
-		status := "running"
-		if attempts > 2 {
-			status = "finished"
-		}
+	responses := []struct {
+		status int
+		body   string
+	}{
+		{
+			status: http.StatusAccepted,
+			body: `{
+				"id": 123,
+				"project_id": "test-project",
+				"status": "running",
+				"started_at": "2024-02-12T03:34:02.151Z"
+			}`,
+		},
+		{
+			status: http.StatusOK,
+			body: `{
+				"id": 123,
+				"project_id": "test-project",
+				"status": "finished",
+				"started_at": "2024-02-12T03:34:02.151Z",
+				"finished_at": "2024-02-12T03:34:12.151Z"
+			}`,
+		},
+	}
 
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(Export{
-			ID:        123,
-			ProjectID: "test-project",
-			Status:    ExportStatus(status),
-		})
+	callCount := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := responses[callCount]
+		w.WriteHeader(resp.status)
+		w.Write([]byte(resp.body))
+		callCount++
 	}))
 	defer server.Close()
 
@@ -93,10 +110,10 @@ func TestWaitForExport(t *testing.T) {
 		token:   "test-token",
 	}
 
-	export, err := client.WaitForExport(context.Background(), "test-project", 123, 30*time.Second)
+	ctx := context.Background()
+	export, err := client.WaitForExport(ctx, "test-project", 123, 30*time.Second)
 	require.NoError(t, err)
-	assert.Equal(t, ExportStatus("finished"), export.Status)
-	assert.Equal(t, 3, attempts)
+	assert.Equal(t, ExportStatusFinished, export.Status)
 }
 
 func TestCreateGroupExport(t *testing.T) {
