@@ -14,7 +14,8 @@ import (
 // VulnerabilityState tracks the state of known vulnerabilities
 type VulnerabilityState struct {
 	LastSeenHash string    `json:"last_seen_hash"`
-	LastSeenAt   time.Time `json:"last_seen_at"`
+	LastScanTime time.Time `json:"last_scan_time"`
+	ProcessedIDs []string  `json:"processed_ids"`
 }
 
 // StateManager handles persistence and retrieval of vulnerability states
@@ -91,7 +92,8 @@ func (sm *StateManager) UpdateState(record map[string]string) error {
 	sm.mu.Lock()
 	sm.states[key] = VulnerabilityState{
 		LastSeenHash: hash,
-		LastSeenAt:   time.Now(),
+		LastScanTime: time.Now(),
+		ProcessedIDs: []string{},
 	}
 	sm.mu.Unlock()
 
@@ -140,8 +142,27 @@ func (sm *StateManager) GetState(key map[string]string) map[string]string {
 	stateKey := sm.ComputeKey(key)
 	if state, exists := sm.states[stateKey]; exists {
 		return map[string]string{
-			"Export ID": state.LastSeenHash,
+			"LastSeenHash": state.LastSeenHash,
+			"LastScanTime": state.LastScanTime.Format(time.RFC3339),
+			"ProcessedIDs": strings.Join(state.ProcessedIDs, ","),
 		}
 	}
 	return nil
+}
+
+func (sm *StateManager) SetState(key map[string]string, value map[string]string) error {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	stateKey := sm.ComputeKey(key)
+	lastScanTime, _ := time.Parse(time.RFC3339, value["LastScanTime"])
+	processedIDs := strings.Split(value["ProcessedIDs"], ",")
+
+	sm.states[stateKey] = VulnerabilityState{
+		LastSeenHash: value["LastSeenHash"],
+		LastScanTime: lastScanTime,
+		ProcessedIDs: processedIDs,
+	}
+
+	return sm.save()
 }

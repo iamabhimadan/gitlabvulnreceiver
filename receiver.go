@@ -2,7 +2,9 @@ package gitlabvulnreceiver
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/csv"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"strings"
@@ -114,17 +116,32 @@ func (r *vulnerabilityReceiver) processExport(ctx context.Context, export *Expor
 	defer reader.Close()
 
 	// Process the CSV
-	csvReader := csv.NewReader(reader)
+	return r.processCSVData(ctx, csv.NewReader(reader), export)
+}
 
-	// Read header
-	header, err := csvReader.Read()
+// Processes a CSV data
+func (r *vulnerabilityReceiver) processCSVData(ctx context.Context, reader *csv.Reader, export *Export) error {
+	header, err := reader.Read()
 	if err != nil {
 		return fmt.Errorf("failed to read CSV header: %w", err)
 	}
 
-	// Process records
+	// Get existing state
+	state := r.stateManager.GetState(map[string]string{
+		"ProjectID": export.GetProjectID(),
+		"ExportID":  fmt.Sprintf("%d", export.ID),
+	})
+
+	processedIDs := make(map[string]bool)
+	if state != nil && state["ProcessedIDs"] != "" {
+		for _, id := range strings.Split(state["ProcessedIDs"], ",") {
+			processedIDs[id] = true
+		}
+	}
+
+	var newProcessedIDs []string
 	for {
-		record, err := csvReader.Read()
+		record, err := reader.Read()
 		if err == io.EOF {
 			break
 		}
@@ -132,39 +149,34 @@ func (r *vulnerabilityReceiver) processExport(ctx context.Context, export *Expor
 			return fmt.Errorf("failed to read CSV record: %w", err)
 		}
 
-		// Convert record to map for easier handling
-		recordMap := make(map[string]string)
-		for i, field := range header {
-			if i < len(record) {
-				recordMap[field] = record[i]
-			}
-		}
+		// Generate unique ID for vulnerability
+		vulnID := generateVulnID(record) // Implement this based on your needs
 
-		// Check if we should process this record
-		if !r.stateManager.ShouldProcess(recordMap) {
+		// Skip if already processed
+		if processedIDs[vulnID] {
 			continue
 		}
 
-		// Convert to log record
+		// Convert and send logs
 		logs := r.convertToLogs(header, record, export)
-
-		// Send to consumer
 		if err := r.consumer.ConsumeLogs(ctx, logs); err != nil {
-			r.logger.Error("Failed to consume logs", zap.Error(err))
-			continue
+			return fmt.Errorf("failed to consume logs: %w", err)
 		}
 
-		// Update state
-		if err := r.stateManager.UpdateState(recordMap); err != nil {
-			r.logger.Error("Failed to update state", zap.Error(err))
-		}
+		newProcessedIDs = append(newProcessedIDs, vulnID)
 	}
 
-	// Update state
-	r.stateManager.UpdateState(map[string]string{
-		"Project Name": export.GetProjectID(),
-		"Export ID":    fmt.Sprintf("%d", export.ID),
-	})
+	// Update state with new processed IDs
+	if len(newProcessedIDs) > 0 {
+		return r.stateManager.SetState(map[string]string{
+			"ProjectID": export.GetProjectID(),
+			"ExportID":  fmt.Sprintf("%d", export.ID),
+		}, map[string]string{
+			"LastSeenHash": generateHash(newProcessedIDs),
+			"LastScanTime": time.Now().Format(time.RFC3339),
+			"ProcessedIDs": strings.Join(append(newProcessedIDs, strings.Split(state["ProcessedIDs"], ",")...), ","),
+		})
+	}
 
 	return nil
 }
@@ -312,4 +324,19 @@ func (r *vulnerabilityReceiver) processGroupExports(ctx context.Context, groupID
 
 	// Process the export
 	return r.processExport(ctx, export)
+}
+
+// generateVulnID creates a unique ID for a vulnerability record
+func generateVulnID(record []string) string {
+	// Combine relevant fields to create a unique identifier
+	h := sha256.New()
+	h.Write([]byte(strings.Join(record, "|")))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// generateHash creates a hash of a slice of strings
+func generateHash(ids []string) string {
+	h := sha256.New()
+	h.Write([]byte(strings.Join(ids, "|")))
+	return hex.EncodeToString(h.Sum(nil))
 }

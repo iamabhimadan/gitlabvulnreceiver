@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configopaque"
+	"go.uber.org/zap"
 )
 
 func TestGitLabClient_CreateExport(t *testing.T) {
@@ -104,16 +105,19 @@ func TestWaitForExport(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := &GitLabClient{
-		client:  http.DefaultClient,
-		baseURL: server.URL,
-		token:   "test-token",
+	// Create client with proper settings
+	cfg := &Config{
+		Token:   configopaque.String("test-token"),
+		BaseURL: server.URL,
 	}
+	settings := component.TelemetrySettings{
+		Logger: zap.NewNop(),
+	}
+	client := NewGitLabClient(cfg, settings)
 
-	ctx := context.Background()
-	export, err := client.WaitForExport(ctx, "test-project", 123, 30*time.Second)
+	export, err := client.WaitForExport(context.Background(), "test-project", 123, 1*time.Minute)
 	require.NoError(t, err)
-	assert.Equal(t, ExportStatusFinished, export.Status)
+	require.Equal(t, ExportStatusFinished, export.Status)
 }
 
 func TestCreateGroupExport(t *testing.T) {
@@ -131,11 +135,15 @@ func TestCreateGroupExport(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := &GitLabClient{
-		client:  http.DefaultClient,
-		baseURL: server.URL,
-		token:   "test-token",
+	// Create client with proper settings
+	cfg := &Config{
+		Token:   configopaque.String("test-token"),
+		BaseURL: server.URL,
 	}
+	settings := component.TelemetrySettings{
+		Logger: zap.NewNop(),
+	}
+	client := NewGitLabClient(cfg, settings)
 
 	export, err := client.CreateGroupExport(context.Background(), "test-group")
 	require.NoError(t, err)
@@ -231,24 +239,31 @@ func TestValidateProjectID(t *testing.T) {
 
 func TestValidateGroupID(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		groupID := "67890"
-		expectedPath := fmt.Sprintf("/api/v4/groups/%s", groupID)
+		assert.Equal(t, "GET", r.Method)
 
-		if r.URL.Path == expectedPath {
+		if r.URL.Path == "/api/v4/groups/67890" {
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(GitLabGroup{ID: 67890})
+			json.NewEncoder(w).Encode(GitLabGroup{
+				ID:   67890,
+				Path: "test-group",
+			})
 		} else {
 			w.WriteHeader(http.StatusNotFound)
-			json.NewEncoder(w).Encode(map[string]string{"message": "404 Group Not Found"})
+			json.NewEncoder(w).Encode(map[string]string{
+				"message": "404 Group Not Found",
+			})
 		}
 	}))
 	defer server.Close()
 
-	client := &GitLabClient{
-		client:  http.DefaultClient,
-		baseURL: server.URL,
-		token:   "test-token",
+	cfg := &Config{
+		Token:   configopaque.String("test-token"),
+		BaseURL: server.URL,
 	}
+	settings := component.TelemetrySettings{
+		Logger: zap.NewNop(),
+	}
+	client := NewGitLabClient(cfg, settings)
 
 	// Test valid group ID
 	err := client.validateGroupID(context.Background(), "67890")

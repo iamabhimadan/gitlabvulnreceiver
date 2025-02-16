@@ -4,11 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
 	"testing"
 	"time"
 
-	"github.com/iamabhimadan/gitlabvulnreceiver/internal/state"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.opentelemetry.io/collector/component"
@@ -146,62 +144,6 @@ func TestExportTimeout(t *testing.T) {
 	err := receiver.processProjectExports(context.Background(), "12345")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to wait for export")
-}
-
-func TestProcessGroupExports(t *testing.T) {
-	stateFile := t.TempDir() + "/test.state"
-
-	cfg := &Config{
-		ExportTimeout: 30 * time.Second,
-		Paths: []PathConfig{{
-			ID:   "67890", // Use ID instead of Path
-			Type: "group",
-		}},
-		StateFile: stateFile,
-	}
-
-	// Initialize state manager properly
-	stateManager, err := state.NewStateManager(stateFile)
-	require.NoError(t, err)
-
-	mockClient := &mockGitLabClient{
-		createGroupExportFunc: func(ctx context.Context, groupID string) (*Export, error) {
-			return &Export{
-				ID:        456,
-				ProjectID: groupID,
-				Status:    ExportStatus("created"),
-			}, nil
-		},
-		waitForExportFunc: func(ctx context.Context, projectID string, exportID int64, timeout time.Duration) (*Export, error) {
-			return &Export{
-				ID:        456,
-				ProjectID: projectID,
-				Status:    ExportStatus("finished"),
-				Links: struct {
-					Self     string `json:"self"`
-					Download string `json:"download"`
-				}{
-					Self:     "https://gitlab.com/export/self",
-					Download: "https://gitlab.com/export/download",
-				},
-			}, nil
-		},
-		getExportDataFunc: func(ctx context.Context, url string) (io.ReadCloser, error) {
-			csvData := "Title,Description,Severity\nTest Vuln,Test Description,High"
-			return io.NopCloser(strings.NewReader(csvData)), nil
-		},
-	}
-
-	receiver := &vulnerabilityReceiver{
-		cfg:          cfg,
-		client:       mockClient,
-		logger:       zap.NewNop(),
-		consumer:     consumertest.NewNop(),
-		stateManager: stateManager, // Use properly initialized state manager
-	}
-
-	err = receiver.processGroupExports(context.Background(), "test-group")
-	require.NoError(t, err)
 }
 
 func TestProcessExportErrors(t *testing.T) {

@@ -1,78 +1,81 @@
 type: gitlab_vulnerability
-spec:
-  version: "0.1.0"
-  status:
-    class: receiver
-    stability:
-      logs: beta
-    distributions: [contrib]
-    codeowners:
-      active: [abhishek-madan]
+status:
+  stability:
+    logs: beta
+  supported: true
 
-  config:
-    paths:
-      description: Single GitLab project or group to monitor
-      type: list
-      element:
-        type: struct
-        fields:
-          id:
-            description: GitLab project or group ID
-            type: string
-            required: true
-          type:
-            description: Type - either "project" or "group"
-            type: string
-            required: true
-            valid_values: [project, group]
-      validation:
-        min_items: 1
-        max_items: 1
+config:
+  paths:
+    description: Single GitLab project or group to monitor
+    type: list
+    element:
+      type: object
+      properties:
+        id:
+          type: string
+          description: GitLab project or group ID
+        type:
+          type: string
+          enum: [project, group]
+          description: Type of GitLab entity to monitor
 
-    token:
-      description: GitLab API token with read_api scope
-      type: string
-      required: true
+  base_url:
+    type: string
+    default: "https://gitlab.com"
+    description: GitLab instance URL
 
-    base_url:
-      description: Base URL of GitLab instance
-      type: string
-      default: https://gitlab.com
+  token:
+    type: string
+    description: GitLab API token with read_api scope
 
-    poll_interval:
-      description: How often to check for new vulnerabilities
-      type: duration
-      default: 5m
+  poll_interval:
+    type: duration
+    default: 5m
+    description: How often to check for new vulnerabilities
 
-    export_timeout:
-      description: Maximum time to wait for export completion
-      type: duration
-      default: 30m
+  export_timeout:
+    type: duration
+    default: 15m
+    description: Maximum time to wait for export completion
 
-    state_file:
-      description: Path to file for storing state
-      type: string
-      default: ""
+logs:
+  vulnerability:
+    description: A vulnerability finding from GitLab
+    type: log_record
+    severity_number: INFO
+    body_type: string
+    attributes:
+      vulnerability.id:
+        type: string
+        description: Unique identifier for the vulnerability
+      vulnerability.title:
+        type: string
+        description: Title of the vulnerability
+      vulnerability.description:
+        type: string
+        description: Detailed description of the vulnerability
+      vulnerability.severity:
+        type: string
+        enum: [critical, high, medium, low, unknown]
+        description: Severity level of the vulnerability
+      vulnerability.status:
+        type: string
+        enum: [detected, confirmed, resolved, dismissed]
+        description: Current status of the vulnerability
 
-  resource_attributes:
-    gitlab.project.id:
-      description: The GitLab project ID
-      type: string
-      enabled: true
-    gitlab.group.id:
-      description: The GitLab group ID
-      type: string
-      enabled: true
-    gitlab.export.id:
-      description: The vulnerability export ID
-      type: string
-      enabled: true
-
-  logs:
-    vulnerability:
-      description: A vulnerability finding from GitLab
-      enabled: true
-      attributes: [vulnerability.id, vulnerability.title, vulnerability.description, vulnerability.state, vulnerability.severity, vulnerability.confidence, vulnerability.report_type, vulnerability.project_name, vulnerability.project_id, vulnerability.scanner, vulnerability.scanner_id, vulnerability.finding_id, vulnerability.identifiers, vulnerability.project_default_branch, vulnerability.solution, vulnerability.file, vulnerability.line, vulnerability.location_link, vulnerability.location_fingerprint, vulnerability.tracking_status, vulnerability.links, vulnerability.remediations, vulnerability.evidence, vulnerability.assets, vulnerability.discovered_at, vulnerability.confirmed_at, vulnerability.resolved_at, vulnerability.dismissed_at, vulnerability.dismissal_reason, vulnerability.dismissal_comment]
+resource_attributes:
+  gitlab.project.id:
+    description: The GitLab project ID
+    type: string
+    enabled: true
+  gitlab.group.id:
+    description: The GitLab group ID
+    type: string
+    enabled: true
+  gitlab.export.id:
+    description: The vulnerability export ID
+    type: string
+    enabled: true
 
 attributes:
   vulnerability.id:
@@ -166,8 +169,6 @@ attributes:
     description: Comment explaining dismissal
     type: string
 
-status: beta
-stability: beta
 pipelines:
   logs:
     receivers: [gitlab_vulnerability] 
