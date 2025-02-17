@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 	"testing"
 	"time"
 
@@ -136,9 +137,12 @@ func TestExportTimeout(t *testing.T) {
 	}
 
 	receiver := &vulnerabilityReceiver{
-		cfg:    cfg,
-		client: mockClient,
-		logger: zap.NewNop(),
+		cfg:               cfg,
+		client:            mockClient,
+		logger:            zap.NewNop(),
+		lastExportTime:    make(map[string]time.Time),
+		exportsInProgress: make(map[string]bool),
+		exportMutex:       sync.RWMutex{},
 	}
 
 	err := receiver.processProjectExports(context.Background(), "12345")
@@ -226,9 +230,12 @@ func TestProcessExportErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			receiver := &vulnerabilityReceiver{
-				cfg:    &tt.config,
-				client: tt.client,
-				logger: zap.NewNop(),
+				cfg:               &tt.config,
+				client:            tt.client,
+				logger:            zap.NewNop(),
+				lastExportTime:    make(map[string]time.Time),
+				exportsInProgress: make(map[string]bool),
+				exportMutex:       sync.RWMutex{},
 			}
 
 			var err error

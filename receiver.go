@@ -30,14 +30,17 @@ type GitLabClientInterface interface {
 }
 
 type vulnerabilityReceiver struct {
-	cfg          *Config
-	settings     component.TelemetrySettings
-	consumer     consumer.Logs
-	client       GitLabClientInterface
-	logger       *zap.Logger
-	cancel       context.CancelFunc
-	wg           sync.WaitGroup
-	stateManager *state.StateManager
+	cfg               *Config
+	settings          component.TelemetrySettings
+	consumer          consumer.Logs
+	client            GitLabClientInterface
+	logger            *zap.Logger
+	cancel            context.CancelFunc
+	wg                sync.WaitGroup
+	stateManager      *state.StateManager
+	lastExportTime    map[string]time.Time
+	exportMutex       sync.RWMutex
+	exportsInProgress map[string]bool
 }
 
 // Starts the receiver
@@ -79,23 +82,42 @@ func (r *vulnerabilityReceiver) pollForExports(ctx context.Context) {
 
 // Checks for new exports and processes them
 func (r *vulnerabilityReceiver) checkExports(ctx context.Context) error {
-	path := r.cfg.Paths[0] // We know there's exactly one path
-	var err error
-	switch path.Type {
-	case "project":
-		err = r.processProjectExports(ctx, path.ID)
-	case "group":
-		err = r.processGroupExports(ctx, path.ID)
-	default:
-		r.logger.Error("Invalid path type", zap.String("type", path.Type))
-		return fmt.Errorf("invalid path type: %s", path.Type)
-	}
-	if err != nil {
-		r.logger.Error("Failed to process exports",
-			zap.String("id", path.ID),
-			zap.String("type", path.Type),
-			zap.Error(err))
-		return err
+	for _, path := range r.cfg.Paths {
+		// Check if we've exported recently
+		r.exportMutex.RLock()
+		lastExport, exists := r.lastExportTime[path.ID]
+		r.exportMutex.RUnlock()
+
+		// Only export if it's been more than 24 hours or never exported
+		if exists && time.Since(lastExport) < 24*time.Hour {
+			r.logger.Debug("Skipping export - too soon since last export",
+				zap.String("id", path.ID),
+				zap.Time("lastExport", lastExport))
+			continue
+		}
+
+		var err error
+		switch path.Type {
+		case "project":
+			err = r.processProjectExports(ctx, path.ID)
+		case "group":
+			err = r.processGroupExports(ctx, path.ID)
+		default:
+			err = fmt.Errorf("unknown path type: %s", path.Type)
+		}
+
+		if err != nil {
+			r.logger.Error("Failed to process exports",
+				zap.String("id", path.ID),
+				zap.String("type", path.Type),
+				zap.Error(err))
+			continue
+		}
+
+		// Update last export time on success
+		r.exportMutex.Lock()
+		r.lastExportTime[path.ID] = time.Now()
+		r.exportMutex.Unlock()
 	}
 	return nil
 }
@@ -289,6 +311,28 @@ func (r *vulnerabilityReceiver) Shutdown(ctx context.Context) error {
 }
 
 func (r *vulnerabilityReceiver) processProjectExports(ctx context.Context, projectID string) error {
+	// Check if export already in progress
+	r.exportMutex.RLock()
+	if r.exportsInProgress[projectID] {
+		r.exportMutex.RUnlock()
+		r.logger.Debug("Skipping export - already in progress",
+			zap.String("projectID", projectID))
+		return nil
+	}
+	r.exportMutex.RUnlock()
+
+	// Mark export as in progress
+	r.exportMutex.Lock()
+	r.exportsInProgress[projectID] = true
+	r.exportMutex.Unlock()
+
+	// Ensure we clear the in-progress flag when done
+	defer func() {
+		r.exportMutex.Lock()
+		delete(r.exportsInProgress, projectID)
+		r.exportMutex.Unlock()
+	}()
+
 	// First validate the project ID
 	if err := r.client.validateProjectID(ctx, projectID); err != nil {
 		r.logger.Error("Invalid project ID",

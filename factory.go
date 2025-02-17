@@ -2,8 +2,9 @@ package gitlabvulnreceiver
 
 import (
 	"context"
+	"sync"
+	"time"
 
-	"github.com/iamabhimadan/gitlabvulnreceiver/internal/state"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/receiver"
@@ -30,28 +31,23 @@ func createDefaultConfig() component.Config {
 }
 
 func createLogsReceiver(
-	_ context.Context,
-	settings receiver.Settings,
+	ctx context.Context,
+	set receiver.Settings,
 	cfg component.Config,
 	consumer consumer.Logs,
 ) (receiver.Logs, error) {
-	rcfg := cfg.(*Config)
+	rCfg := cfg.(*Config)
 
-	// Create state manager for tracking processed vulnerabilities
-	stateManager, err := state.NewStateManager(rcfg.StateFile)
-	if err != nil {
-		return nil, err
-	}
+	client := NewGitLabClient(rCfg, set.TelemetrySettings)
 
-	recv := &vulnerabilityReceiver{
-		cfg:          rcfg,
-		settings:     settings.TelemetrySettings,
-		consumer:     consumer,
-		logger:       settings.Logger,
-		stateManager: stateManager,
-	}
-
-	recv.client = NewGitLabClient(rcfg, settings.TelemetrySettings)
-
-	return recv, nil
+	return &vulnerabilityReceiver{
+		cfg:               rCfg,
+		settings:          set.TelemetrySettings,
+		consumer:          consumer,
+		client:            client,
+		logger:            set.Logger,
+		lastExportTime:    make(map[string]time.Time),
+		exportsInProgress: make(map[string]bool),
+		exportMutex:       sync.RWMutex{},
+	}, nil
 }
